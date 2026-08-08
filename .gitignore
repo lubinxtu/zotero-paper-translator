@@ -1,0 +1,12 @@
+# 依赖
+node_modules/
+
+# 构建产物
+addon/
+*.xpi
+
+# 冗余的 worker 副本（构建用 pdf.worker.raw.txt 已纳入版本控制）
+resources/*.mjs
+
+# 系统
+.DS_Store

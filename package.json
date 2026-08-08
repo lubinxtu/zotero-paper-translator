@@ -1,0 +1,16 @@
+{
+  "name": "zotero-paper-translator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zotero 7 plugin: translate selected English PDF papers into Chinese (formula/table-preserving), producing an importable translated HTML/PDF attachment. Built on the paper-translator skill.",
+  "scripts": {
+    "build": "node build.mjs",
+    "package": "node build.mjs && node package.mjs"
+  },
+  "devDependencies": {
+    "archiver": "^7.0.1",
+    "esbuild": "^0.24.0",
+    "pdfjs-dist": "^6.2.0"
+  }
+}
