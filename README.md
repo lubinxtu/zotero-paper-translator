@@ -82,7 +82,14 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 - 公式以 LaTeX 形式被 LLM 保留并交由 MathJax 渲染；若原文公式在 PDF 中未以文本层提供（纯图片公式），将无法识别，会以"见图 X"占位。
 - 双栏 / 复杂表格的版式还原为启发式，极端排版可能错位。
 - 翻译质量取决于所选 LLM；建议在首选项中选用支持长上下文的模型。
-- 兼容性已在 **Zotero 9.0.6** 验证（设置面板与菜单注入正常）；更早版本（7 / 8）按 manifest 范围支持，欢迎反馈。菜单采用 `Zotero.MenuManager.registerMenu`（Zotero 8+ 标准 API）并 fallback 到 `#menu_ToolsPopup`，设置面板通过 `Zotero.PreferencePanes.register` 注册。
+- 兼容性已在 **Zotero 9.0.6** 验证（设置面板与菜单注入正常）；更早版本（7 / 8）按 manifest 范围支持，欢迎反馈。菜单采用 `Zotero.MenuManager.registerMenu`（Zotero 8+ 标准 API，`menus` 数组 + `l10nID`，标签经 Fluent 本地化）并 fallback 到 `#menu_ToolsPopup`；设置面板通过 `Zotero.PreferencePanes.register` 注册。
+
+## 更新日志
+
+- **v0.1.9**：修复 Zotero 8/9 菜单不显示 —— 按官方源码核对并修正 `MenuManager.registerMenu` 签名（`menus` 数组必填）、检查注册返回值并真正回退；FTL 改为标准多行 `.label` 属性；`build.mjs` 把 `locale/` 打入 xpi；FTL 注入所有主窗口并支持新开窗口。
+- **v0.1.8**：重写菜单系统（MenuManager + `#menu_ToolsPopup` fallback），新增"设置 API Key"入口。
+- **v0.1.7**：新增备用配置弹窗（`showPrefs`），改进偏好面板注册。
+- **v0.1.3–v0.1.5**：Zotero 9 兼容（`strict_max_version` 用 `x.x.*` 格式）。
 
 ## 许可证
 

@@ -61,32 +61,40 @@ function sleep(ms) {
 }
 
 // 逐块翻译。blocks: [{type,text}]；返回同结构，text 为译文。
+// 并发数为 3：长 PDF 提速明显，同时避免一次性打爆 API 限流；输出保持原顺序。
 // onProgress(done,total,type)
+const MAX_CONCURRENCY = 3;
+
 export async function translateBlocks(blocks, opts, onProgress) {
   const system = buildSystemPrompt(opts.customGlossary || "");
   const total = blocks.length;
+  const out = new Array(total);
   let done = 0;
-  const out = [];
-  for (const blk of blocks) {
-    if (!TRANSLATABLE.has(blk.type)) {
-      out.push(blk);
-    } else {
-      const userContent = `${blockMarker(blk.type)} ${blk.text}`;
-      let translated = "";
-      try {
-        translated = await callLLM(system, userContent, opts);
-        // 去掉模型可能回带的结构标记前缀
-        translated = stripMarker(translated, blk.type);
-      } catch (e) {
-        // 翻译失败时保留原文，避免整篇失败
-        translated = blk.text;
-        out._errors = (out._errors || []).concat([`[${blk.type}] ${e.message}`]);
+  let idx = 0;
+
+  const worker = async () => {
+    while (idx < total) {
+      const i = idx++;
+      const blk = blocks[i];
+      if (!TRANSLATABLE.has(blk.type)) {
+        out[i] = blk;
+      } else {
+        const userContent = `${blockMarker(blk.type)} ${blk.text}`;
+        try {
+          const translated = await callLLM(system, userContent, opts);
+          out[i] = { type: blk.type, text: stripMarker(translated, blk.type) };
+        } catch (e) {
+          // 翻译失败时保留原文，避免整篇失败
+          out[i] = { type: blk.type, text: blk.text };
+          out._errors = (out._errors || []).concat([`[${blk.type}] ${e.message}`]);
+        }
       }
-      out.push({ type: blk.type, text: translated });
+      done++;
+      if (onProgress) onProgress(done, total, blk.type);
     }
-    done++;
-    if (onProgress) onProgress(done, total, blk.type);
-  }
+  };
+
+  await Promise.all(Array.from({ length: MAX_CONCURRENCY }, () => worker()));
   return out;
 }
 

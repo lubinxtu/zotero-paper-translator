@@ -56,7 +56,8 @@ function groupIntoLines(items) {
 // 判断一行属于哪种结构块
 const RE_SECTION = /^(#{1,3}\s|I{1,3}V?|X{0,3}I{0,3}V?X{0,3})\b/; // 章节编号 I. II. 1. 1.1 等
 const RE_FIG = /^fig\.?\s*\d+/i;
-const RE_TABLE_ROW = /([\d.±%]+\s*(?:ms|cm|m|s|px|dB|°)?\s*)/; // 含数字的行（粗略）
+// 数值+单位（表格行特征之一）
+const RE_NUM_UNIT = /\d+(?:\.\d+)?\s*(?:%|ms|cm|mm|μm|nm|m|s|ms|px|dB|°|kHz|MHz|GHz|MB|GB|KB)/i;
 
 function classify(line) {
   if (RE_SECTION.test(line)) {
@@ -67,9 +68,11 @@ function classify(line) {
     return "H3";
   }
   if (RE_FIG.test(line)) return "FIG";
-  // 表格行：行内出现至少两个数字片段
-  const numMatches = (line.match(/[\d.]+/g) || []).length;
-  if (numMatches >= 2 && /[\d.]+\s+[\d.]+/.test(line)) return "TABLE";
+  // 表格行：≥3 个数值片段，或 2 个数值片段且带单位/百分号。
+  // 阈值设高一些，避免 "In 2019, 35% of …" 这类正文句被误判为表格。
+  const numMatches = (line.match(/\d+(?:\.\d+)?/g) || []).length;
+  if (numMatches >= 3 && /[\d.]+\s+[\d.]+/.test(line)) return "TABLE";
+  if (numMatches >= 2 && RE_NUM_UNIT.test(line)) return "TABLE";
   return "P";
 }
 
