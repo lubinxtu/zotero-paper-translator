@@ -43,6 +43,15 @@ function startup({ id, version, rootURI: uri }) {
     })
     .catch((e) => {
       Zotero.logError("paper-translator 加载失败: " + e);
+      // 可见告警：避免加载失败时静默无菜单，用户无从排查
+      try {
+        Zotero.alert(
+          null,
+          "论文翻译插件加载失败",
+          "核心模块加载出错，菜单未安装：\n\n" + e.message +
+            "\n\n请按 Ctrl+Shift+J 打开错误控制台，把包含 paper-translator 的日志发给我们排查。"
+        );
+      } catch (alertErr) {}
     });
 }
 

@@ -86,6 +86,7 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 
 ## 更新日志
 
+- **v0.1.10**：修复插件核心模块在 Zotero 中加载失败、菜单不安装的根因 —— Zotero 插件运行在无 DOM 的 `Cu.Sandbox` 里，pdfjs v6 顶层 `new DOMMatrix()`（及 `Uint8Array.prototype.toHex` 等新 API）会抛错导致 `import()` 失败。现在构建时自动打桩（DOMMatrix / Uint8Array.toHex / Promise.withResolvers），pdf.js worker 改为 xpi 内独立文件、走主线程 fake worker（不依赖 DOM）；加载失败时弹出可见告警便于排查。
 - **v0.1.9**：修复 Zotero 8/9 菜单不显示 —— 按官方源码核对并修正 `MenuManager.registerMenu` 签名（`menus` 数组必填）、检查注册返回值并真正回退；FTL 改为标准多行 `.label` 属性；`build.mjs` 把 `locale/` 打入 xpi；FTL 注入所有主窗口并支持新开窗口。
 - **v0.1.8**：重写菜单系统（MenuManager + `#menu_ToolsPopup` fallback），新增"设置 API Key"入口。
 - **v0.1.7**：新增备用配置弹窗（`showPrefs`），改进偏好面板注册。

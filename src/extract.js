@@ -1,20 +1,23 @@
 // extract.js
 // 使用 pdfjs-dist 从 PDF 抽取文本，并按行重建、识别结构块。
 // 结构块类型见 glossary.js 的 BLOCK。
+//
+// worker 说明（Zotero 沙箱兼容）：
+// Zotero 给插件 bootstrap 的是无 DOM 的 Cu.Sandbox（无 window/document），
+// pdfjs 的真实 worker 路径会因引用 window.location 而失败并自动回退到 fake worker，
+// fake worker 用 `import(workerSrc)` 在主线程加载 worker 模块（沙箱内可用）。
+// 因此这里把 pdf.worker.min.mjs 作为独立文件打进 xpi，用 import.meta.url 定位，
+// 与 bundle 自身的 jar:file 动态导入机制一致。
 
 import * as pdfjsLib from "pdfjs-dist";
-// 将 pdf.js worker 源码以文本形式打入包内，运行时用 blob 加载（避免插件内解析外部 worker 资源的麻烦）。
-import workerSource from "../resources/pdf.worker.raw.txt";
 
 let _workerReady = false;
 function ensureWorker() {
   if (_workerReady) return;
-  const blob = new Blob([workerSource], { type: "text/javascript" });
-  const workerSrc = URL.createObjectURL(blob);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-  if ("workerType" in pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerType = "module";
-  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    "pdf.worker.min.mjs",
+    import.meta.url
+  ).href;
   _workerReady = true;
 }
 
@@ -82,7 +85,12 @@ function classify(line) {
 export async function extractPDF(dataBytes, onProgress) {
   ensureWorker();
 
-  const doc = await pdfjsLib.getDocument({ data: dataBytes, useWorkerFetch: true, isEvalSupported: false }).promise;
+  const loadingTask = pdfjsLib.getDocument({
+    data: dataBytes,
+    useWorkerFetch: true,
+    isEvalSupported: false,
+  });
+  const doc = await loadingTask.promise;
   const blocks = [];
   let tableBuffer = [];
 
@@ -110,6 +118,6 @@ export async function extractPDF(dataBytes, onProgress) {
     if (onProgress) onProgress(p, doc.numPages);
   }
 
-  await doc.destroy();
+  try { await loadingTask.destroy(); } catch (e) {}
   return { blocks };
 }
