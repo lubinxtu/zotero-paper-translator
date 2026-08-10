@@ -15,7 +15,7 @@
 
 ## 安装
 
-1. 到 [Releases](https://github.com/15617/zotero-paper-translator/releases) 下载 `zotero-paper-translator.xpi`。
+1. 到 [Releases](https://github.com/lubinxtu/zotero-paper-translator/releases) 下载 `zotero-paper-translator.xpi`。
 2. 在 Zotero 中：`工具 → 插件`（或 `设置 → 插件`）→ 齿轮图标 → `Install Add-on From File…` → 选择下载的 `.xpi`。
 3. 重启 Zotero。
 
@@ -45,7 +45,7 @@
 ## 从源码构建
 
 ```bash
-git clone https://github.com/15617/zotero-paper-translator.git
+git clone https://github.com/lubinxtu/zotero-paper-translator.git
 cd zotero-paper-translator
 npm install          # 安装 esbuild / pdfjs-dist / archiver
 npm run build        # 打包 ESM 到 addon/
