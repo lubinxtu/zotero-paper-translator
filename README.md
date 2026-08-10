@@ -1,6 +1,6 @@
 # zotero-paper-translator
 
-> 在 Zotero 7 里一键把选中的英文 PDF 论文翻译成中文，保留公式与表格结构，并生成可导入 Zotero 的中译附件。
+> 在 Zotero 7 / 8 / 9 中一键把选中的英文 PDF 论文翻译成中文，保留公式与表格结构，并生成可导入 Zotero 的中译附件。
 
 本插件源自 `paper-translator` 工作流：把"PDF 论文翻译 → 结构化 Markdown → 公式渲染 → 可导入 Zotero 的文档"这套流程，封装成一个开箱即用的 Zotero 插件。与社区现有片段级翻译插件（如 zotero-pdf-translate）的差异在于：**全文结构化翻译 + 公式保留 + 可导出的独立翻译文档**。
 
@@ -19,13 +19,13 @@
 2. 在 Zotero 中：`工具 → 插件`（或 `设置 → 插件`）→ 齿轮图标 → `Install Add-on From File…` → 选择下载的 `.xpi`。
 3. 重启 Zotero。
 
-> 要求 Zotero 7.0 及以上。
+> 要求 Zotero 7.0 及以上（已在 **Zotero 9.0.6** 验证；manifest 兼容范围 `7.0` – `9.0.*`）。
 
 ## 使用
 
 1. 在 Zotero 选中一篇文献，**或其 PDF 附件**（支持多选，批量翻译）。
-2. 右键 → **「翻译为 PDF（中译）」**（或在 `工具` 菜单中点击 `论文翻译：翻译选中 PDF`）。
-3. 首次使用需在 `Zotero 首选项 → 论文翻译` 填写 **API Key / 端点 / 模型**。
+2. 右键 → **「翻译为中文」**（或在 `工具` 菜单中点击 `论文翻译：翻译选中 PDF`）。
+3. 首次使用需在 `Zotero 首选项 → 论文翻译` 填写 **API Key / 端点 / 模型**（也可通过 `工具 → 论文翻译：设置 API Key` 弹窗配置）。
 4. 翻译完成后，会生成名为「《标题》（中译）」的 HTML 子附件，双击在浏览器中打开即可查看（公式已渲染）；点击页面右上角「打印 / 另存为 PDF」可导出 PDF。
 
 ## 配置（首选项）
@@ -40,7 +40,7 @@
 | 输出模式 | `html`（中译附件）/ `pdf`（额外自动打开打印） | `html` |
 | 自定义术语表 | 每行 `英文 → 中文`，覆盖/补充内置基准 | 空 |
 
-> 若首选项面板未显示，可在 `about:config` 中搜索 `extensions.zotero-paper-translator.` 手动设置。
+> 若首选项面板未显示，也可通过 `工具 → 论文翻译：设置 API Key` 弹窗配置，或在 `about:config` 中搜索 `extensions.zotero-paper-translator.` 手动设置。
 
 ## 从源码构建
 
@@ -82,7 +82,7 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 - 公式以 LaTeX 形式被 LLM 保留并交由 MathJax 渲染；若原文公式在 PDF 中未以文本层提供（纯图片公式），将无法识别，会以"见图 X"占位。
 - 双栏 / 复杂表格的版式还原为启发式，极端排版可能错位。
 - 翻译质量取决于所选 LLM；建议在首选项中选用支持长上下文的模型。
-- 本插件已在离线构建环境通过打包校验，但**未在实际 Zotero 运行时中端到端测试**，请在安装后验证菜单与翻译流程。
+- 兼容性已在 **Zotero 9.0.6** 验证（设置面板与菜单注入正常）；更早版本（7 / 8）按 manifest 范围支持，欢迎反馈。菜单采用 `Zotero.MenuManager.registerMenu`（Zotero 8+ 标准 API）并 fallback 到 `#menu_ToolsPopup`，设置面板通过 `Zotero.PreferencePanes.register` 注册。
 
 ## 许可证
 
