@@ -15,6 +15,19 @@ function startup({ id, version, rootURI: uri }) {
     .catch((e) => {
       Zotero.logError("paper-translator 加载失败: " + e);
     });
+  // 注册偏好设置面板（Zotero 7+）
+  try {
+    if (typeof Zotero !== "undefined" && Zotero.PreferencePanes) {
+      Zotero.PreferencePanes.register({
+        pluginID: "zotero-paper-translator@lubinxtu.github.io",
+        src: rootURI + "preferences.xhtml",
+        label: "论文翻译",
+        parent: "general", // 放在"常规"分类下
+      });
+    }
+  } catch (e) {
+    Zotero.logError("paper-translator 偏好面板注册失败: " + e);
+  }
 }
 
 function shutdown({ id }) {
