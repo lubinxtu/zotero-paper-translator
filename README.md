@@ -86,6 +86,7 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 
 ## 更新日志
 
+- **v0.1.13**：修复偏好面板空白 —— `preferences.xhtml` 开头的 `<?xml ...?>` 声明被 Zotero 包进 `<div>` 后作为 XML 片段解析时构成良构错误，导致面板加载失败。已移除该声明（`PreferencePanes.register` 内部已固定 `defaultXUL: true`，XUL 标签格式本无问题）。
 - **v0.1.12**：修复「设置 API Key」点击无反应 —— Zotero 沙箱没有 `window.prompt/confirm`，旧 `showPrefs()` 一调用就抛错被静默吞掉。现在「设置 API Key」直接打开已注册的偏好面板（`Zotero.Utilities.Internal.openPreferences("zpt-prefpane")`），未配置 API Key 时也引导到面板填写；错误不再静默（记入日志）。
 - **v0.1.11**：修复插件核心模块在 Zotero 9 中加载失败的根因 —— 插件 bootstrap 运行在无 DOM 的 `Cu.Sandbox` 里，**动态 `import()` 不可用**（抛 `No ScriptLoader found for the current context`）。改为：主模块打成 IIFE 由 `Services.scriptloader.loadSubScript` 加载（Zotero 官方示例同款模式）；pdf.js worker 静态打包进同一 bundle，并通过 pdfjs 官方主线程钩子 `globalThis.pdfjsWorker` 直连（不再做任何运行时模块加载）；沙箱缺失的 `DOMMatrix` / `performance` / `AbortSignal` / `AbortController` / `ReadableStream` / `Uint8Array.toHex` / `Promise.withResolvers` 由构建时补齐；加载失败会弹窗提示。
 - **v0.1.10**：修复 pdfjs v6 顶层 `new DOMMatrix()` 在沙箱中崩溃的问题（该版本被 v0.1.11 的更完整方案取代）。
