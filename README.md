@@ -86,6 +86,7 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 
 ## 更新日志
 
+- **v0.1.17**：大幅改善翻译排版质量 —— 修复章节标题正则 bug（`X{0,3}I{0,3}V?X{0,3}` 可匹配空串，导致所有字母开头行被误判为标题，正文全部渲染成 H3 碎片）；新增**双栏检测**（item 级 x 坐标 k-means 聚类，双栏页面按左栏→右栏输出，修复左右栏混拼）；新增**段落合并**（按行距与行尾标点合并正文为完整段落，连字符断词自动拼接，换栏自动断段）；系统提示词增加"残片原样返回"兜底指令。
 - **v0.1.16**：修复「PDF 抽取失败 console is not defined」—— Zotero 沙箱的全局白名单不含 `console`（pdfjs 的 info/warn 直接崩溃），且 `structuredClone` 同样缺失（pdfjs 消息序列化路径用到）。构建时补齐 `console` 桩，`structuredClone` 用 `@ungap/structured-clone`（兼容 `structuredClone(obj, null)` 调用）；vm 沙箱测试改为严格复刻 Zotero 全局白名单，提前暴露此类差异。
 - **v0.1.15**：偏好面板中未设置的字段显示 `undefined` —— 插件未注册默认偏好，Zotero 直接读 prefs 返回 undefined。新增 `prefs.js`（`pref("...", 默认值)`）随 xpi 打包，Zotero 启动时自动注册默认值；温度以字符串注册避免整数化丢精度。
 - **v0.1.14**：修复偏好面板字段不可编辑 —— Zotero 9 中 XUL `<textbox>` 已不再可交互，改用官方同款控件：文本输入 `html:input` / `html:textarea`、下拉 `menulist native="true"`，`preference` 属性直接绑定完整 pref key（`<preference>` ID 旧写法已废弃）。

@@ -63,6 +63,8 @@ ${formatGlossary(customGlossary)}
 ## 输出要求
 - 仅返回翻译后的内容，不要添加任何解释、前言或"以下是翻译"之类的套话。
 - 保留输入的结构标记（如 [H1]、[P]、[TABLE]、[FIG] 等），以便程序重组版式。
+- 若输入内容为孤立公式、符号碎片、编号片段或无法理解的内容，请**原样返回该内容本身**，
+  绝不输出"抱歉"、"请提供"、"内容不完整"等任何解释性文字。
 
 ${customGlossary && customGlossary.trim() ? "\n# 额外用户指令\n" + customGlossary.trim() : ""}`;
 }
