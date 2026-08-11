@@ -1,37 +1,29 @@
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
       xmlns:html="http://www.w3.org/1999/xhtml">
-  <!-- 注意：此文件被 Zotero 包进 <div> 后作为 XML 片段解析（parseXULToFragment），
-       不能有 <?xml ...?> 声明（声明在 body 里是良构错误，会导致面板空白） -->
-
-  <preferences>
-    <preference id="p-apiKey"    name="extensions.zotero-paper-translator.apiKey"        type="string"/>
-    <preference id="p-baseURL"   name="extensions.zotero-paper-translator.baseURL"       type="string"/>
-    <preference id="p-model"     name="extensions.zotero-paper-translator.model"         type="string"/>
-    <preference id="p-temp"      name="extensions.zotero-paper-translator.temperature"   type="string"/>
-    <preference id="p-retries"   name="extensions.zotero-paper-translator.maxRetries"    type="string"/>
-    <preference id="p-glossary"  name="extensions.zotero-paper-translator.customGlossary" type="string"/>
-    <preference id="p-output"    name="extensions.zotero-paper-translator.outputMode"    type="string"/>
-  </preferences>
-
+  <!-- 本文件被 Zotero 包进 <div> 后作为 XML 片段解析（parseXULToFragment）：
+       1) 不能有 <?xml ...?> 声明（body 内的声明是良构错误，面板会空白）；
+       2) Zotero 9 中 XUL <textbox> 已不可编辑，文本输入必须用 <html:input>/<html:textarea>
+          并带 preference="完整pref key" 直接绑定；下拉/开关用 XUL + native="true"。
+  -->
   <groupbox>
     <caption label="LLM API 配置"/>
     <hbox align="center">
       <label value="API Key：" flex="0"/>
-      <textbox preference="p-apiKey" flex="1" type="password"/>
+      <html:input type="password" preference="extensions.zotero-paper-translator.apiKey" style="flex: 1; min-width: 0;"/>
     </hbox>
     <hbox align="center">
       <label value="端点 Base URL：" flex="0"/>
-      <textbox preference="p-baseURL" flex="1"/>
+      <html:input type="text" preference="extensions.zotero-paper-translator.baseURL" style="flex: 1; min-width: 0;"/>
     </hbox>
     <hbox align="center">
       <label value="模型名：" flex="0"/>
-      <textbox preference="p-model" flex="1"/>
+      <html:input type="text" preference="extensions.zotero-paper-translator.model" style="flex: 1; min-width: 0;"/>
     </hbox>
     <hbox align="center">
       <label value="温度：" flex="0"/>
-      <textbox preference="p-temp" flex="1" size="6"/>
+      <html:input type="text" preference="extensions.zotero-paper-translator.temperature" size="6"/>
       <label value="重试次数：" flex="0"/>
-      <textbox preference="p-retries" flex="1" size="6"/>
+      <html:input type="text" preference="extensions.zotero-paper-translator.maxRetries" size="6"/>
     </hbox>
     <description>端点需为 OpenAI 兼容的 Chat Completions 接口（DeepSeek / OpenAI / 本地兼容服务等均可）。</description>
   </groupbox>
@@ -40,7 +32,7 @@
     <caption label="翻译与输出"/>
     <hbox align="center">
       <label value="输出模式：" flex="0"/>
-      <menulist preference="p-output">
+      <menulist native="true" preference="extensions.zotero-paper-translator.outputMode">
         <menupopup>
           <menuitem label="中译 HTML 附件（推荐）" value="html"/>
           <menuitem label="HTML + 自动打开打印(PDF)" value="pdf"/>
@@ -48,11 +40,11 @@
       </menulist>
     </hbox>
     <label value="自定义术语表（每行一条，格式：英文 → 中文），留空则用内置基准）："/>
-    <textbox preference="p-glossary" multiline="true" rows="6" flex="1"/>
+    <html:textarea preference="extensions.zotero-paper-translator.customGlossary" rows="6"/>
   </groupbox>
 
   <description>
-    使用方式：在 Zotero 选中一篇文献或其 PDF 附件，右键 → “翻译为 PDF（中译）”。
+    使用方式：在 Zotero 选中一篇文献或其 PDF 附件，右键 → “翻译为中文”。
     生成的翻译文档作为子附件保存在该文献下，公式经 MathJax 渲染，可在浏览器中“打印 → 另存为 PDF”。
   </description>
 </vbox>
