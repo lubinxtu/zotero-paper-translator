@@ -4,7 +4,9 @@
 
 import { buildSystemPrompt, BLOCK } from "./glossary.js";
 
-const TRANSLATABLE = new Set(["H1", "H2", "H3", "P", "FIG", "TABLE"]);
+// 可翻译块类型。表格行（TABLE）不送 LLM：模型会把表格当文本乱翻（如数字行加"表"字），
+// 且表格数值本就应原样保留。
+const TRANSLATABLE = new Set(["H1", "H2", "H3", "P", "FIG"]);
 
 function blockMarker(type) {
   return BLOCK[type] || "[P]";
@@ -74,11 +76,12 @@ function sleep(ms) {
 // 策略：
 // 1. 连续可翻译块打包成批（[B0]/[B1]… 标记一次调用），让模型看到上下文，
 //    显著减少碎片幻觉（此前每块独立翻译，残片输入会诱发模型编造内容）。
-// 2. 参考文献条目（[N] 开头）与公式/符号残片不送 LLM，直接保留原文
-//    （参考文献本就要求英文原文；残片送模型只会换来幻觉或"无法理解"的废话）。
+// 2. 参考文献条目（[N] 开头）、公式/符号残片、表格行（TABLE）不送 LLM，直接保留原文
+//    （参考文献本就要求英文原文；残片送模型只会换来幻觉；表格行送模型会被当文本乱翻）。
 // 3. 批量失败或输出格式不匹配时，自动回退为逐块翻译。
+// 4. 去重保护：LLM 偶发把同一译文重复标记给相邻块时，后一块恢复原文。
 // onProgress(done,total,type)
-const MAX_BATCH = 4;         // 每批最多块数
+const MAX_BATCH = 8;         // 每批最多块数（大批次给模型更多上下文）
 const MAX_CONCURRENCY = 2;   // 批间并发
 
 // 参考文献条目（[N] 开头）→ 保留英文原文，不送 LLM
@@ -147,6 +150,17 @@ export async function translateBlocks(blocks, opts, onProgress) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, batches.length) }, () => worker()));
+
+  // 去重保护：LLM 偶发把同一译文重复标记给相邻块时，后一块恢复原文（宁可保留英文也不重复）
+  for (let i = 1; i < total; i++) {
+    if (
+      out[i] && out[i - 1] &&
+      out[i].text === out[i - 1].text &&
+      blocks[i].text !== blocks[i - 1].text
+    ) {
+      out[i] = { type: blocks[i].type, text: blocks[i].text };
+    }
+  }
   return out;
 }
 
@@ -201,10 +215,11 @@ function parseBatchOutput(text, n) {
 }
 
 function stripMarker(text, type) {
-  // 去掉行首可能的结构标记（模型可能改写/添加任意标记，如 [P]、[TABLE]、[H2]）
-  // 以及 markdown 标题符号（## 、### 等）
+  // 去掉行首的结构标记与 markdown 标题符号，以及全文中残留的中英文结构标记
+  // （模型可能改写/翻译标记，如 [P]、[TABLE]、[段落]、[图] 等）
   return text
-    .replace(/^\s*\[(?:P|H1|H2|H3|TABLE|FIG|EQN)\]\s*/, "")
+    .replace(/^\s*\[(?:P|H1|H2|H3|TABLE|FIG|EQN|段落|表格|图|公式|标题)\]\s*/, "")
     .replace(/^#{1,6}\s*/, "")
+    .replace(/\[(?:P|H1|H2|H3|TABLE|FIG|EQN|段落|表格|图|公式|标题)\]/g, "")
     .trim();
 }
