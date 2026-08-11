@@ -113,7 +113,7 @@ await esbuild.build({
   logLevel: "info",
 });
 
-const staticFiles = ["bootstrap.js", "manifest.json", "preferences.xhtml"];
+const staticFiles = ["bootstrap.js", "manifest.json", "preferences.xhtml", "prefs.js"];
 for (const f of staticFiles) {
   await copyFile(path.join(root, f), path.join(addon, f));
 }

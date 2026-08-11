@@ -86,6 +86,7 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 
 ## 更新日志
 
+- **v0.1.15**：偏好面板中未设置的字段显示 `undefined` —— 插件未注册默认偏好，Zotero 直接读 prefs 返回 undefined。新增 `prefs.js`（`pref("...", 默认值)`）随 xpi 打包，Zotero 启动时自动注册默认值（端点 / 模型 / 温度 / 重试 / 输出模式 / 术语表）；温度以字符串注册避免整数化丢精度。
 - **v0.1.14**：修复偏好面板字段不可编辑 —— Zotero 9 中 XUL `<textbox>` 已不再可交互，改用官方同款控件：文本输入 `html:input` / `html:textarea`、下拉 `menulist native="true"`，`preference` 属性直接绑定完整 pref key（`<preference>` ID 旧写法已废弃）。
 - **v0.1.13**：修复偏好面板空白 —— `preferences.xhtml` 开头的 `<?xml ...?>` 声明被 Zotero 包进 `<div>` 后作为 XML 片段解析时构成良构错误，导致面板加载失败。已移除该声明（`PreferencePanes.register` 内部已固定 `defaultXUL: true`，XUL 标签格式本无问题）。
 - **v0.1.12**：修复「设置 API Key」点击无反应 —— Zotero 沙箱没有 `window.prompt/confirm`，旧 `showPrefs()` 一调用就抛错被静默吞掉。现在「设置 API Key」直接打开已注册的偏好面板（`Zotero.Utilities.Internal.openPreferences("zpt-prefpane")`），未配置 API Key 时也引导到面板填写；错误不再静默（记入日志）。
