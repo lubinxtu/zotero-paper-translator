@@ -170,16 +170,16 @@ async function translateBatch(system, batch, opts) {
 
 async function fallbackOneByOne(system, batch, opts) {
   return Promise.all(
-    batch.map(async (b) => {
+    batch.map(async (b, i) => {
       try {
         return {
-          idx: b.idx,
+          idx: i,
           pos: b.pos,
           ok: true,
           text: await callLLM(system, `${blockMarker(b.blk.type)} ${b.blk.text}`, opts),
         };
       } catch (e) {
-        return { idx: b.idx, pos: b.pos, ok: false, error: e.message };
+        return { idx: i, pos: b.pos, ok: false, error: e.message };
       }
     })
   );
