@@ -89,16 +89,32 @@ function isReference(text) {
   return /^\[\d+\]/.test(text.trim());
 }
 
-// 公式/符号残片 → 保留原文不翻译（公式本来就不该翻译，且残片会诱发模型幻觉）
+// 公式/符号残片 → 保留原文不翻译（公式本来就不该翻译，且残片会诱发模型幻觉/乱译）
+const MATH_SYMS = /[\^_$\\{}|±≈×÷−√∫∂∑∏∈ΩλΣΓΔγμνπθℓ⟨⟩†∗ˆ′~]/;
+
 function isFragment(text) {
   const t = text.trim();
   if (!t) return true;
-  const words = (t.match(/[A-Za-z]{3,}/g) || []).length;
-  if (words >= 6) return false; // 含完整句子 → 交给模型
-  const symCount = (t.match(/[\^_$\\{}|±≈×÷−√∫∂∑∏∈ΩλΣΓΔγμνπθℓ⟨⟩†∗]/g) || []).length;
+  const symCount = (t.match(MATH_SYMS) || []).length;
+  // 剔除数字与公式编号（如 (1.1)、2.3）后再判断句子结尾，避免编号里的句点误判
+  const noNums = t.replace(/\(?\d+(?:\.\d+)*\)?/g, "");
+  const hasSentenceEnd = /[.!?]/.test(noNums);
+  // 数学符号密集 → 公式行，保留原文
   if (symCount >= 3) return true;
-  if (t.length >= 12 && !/\s/.test(t)) return true; // 无空格连续符号串
+  // 无空格连续符号串
+  if (t.length >= 12 && !/\s/.test(t)) return true;
+  // 含公式符号的短行（无句号，不是完整句子）→ 保留
+  if (t.length <= 80 && symCount >= 1 && !hasSentenceEnd) return true;
+  // 数字密集且无句号（公式/表格残片，如 "2 Npair 2 12 N = N + 1) = N"）
+  const numTokens = (t.match(/\d+/g) || []).length;
+  if (numTokens >= 3 && !hasSentenceEnd) return true;
   return false;
+}
+
+// 译文清洗：中文译文里混入公式符号（≥2 个）→ 判定质量差，回退原文（宁可英文也不乱）
+function isDirtyTranslation(text) {
+  if (!/[\u4e00-\u9fff]/.test(text)) return false; // 无中文 → 不判定（英文原文/译文都干净）
+  return (text.match(MATH_SYMS) || []).length >= 2;
 }
 
 export async function translateBlocks(blocks, opts, onProgress) {
@@ -139,7 +155,13 @@ export async function translateBlocks(blocks, opts, onProgress) {
         const item = batch[r.idx];
         const blk = item.blk;
         if (r.ok) {
-          out[item.pos] = { type: blk.type, text: stripMarker(r.text, blk.type) };
+          const cleaned = stripMarker(r.text, blk.type);
+          // 空结果或译文混入公式符号（中英混杂）→ 回退原文，保证输出干净
+          if (!cleaned || isDirtyTranslation(cleaned)) {
+            out[item.pos] = { type: blk.type, text: blk.text };
+          } else {
+            out[item.pos] = { type: blk.type, text: cleaned };
+          }
         } else {
           out[item.pos] = { type: blk.type, text: blk.text };
           out._errors = (out._errors || []).concat([`[${blk.type}] ${r.error}`]);

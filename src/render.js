@@ -37,6 +37,8 @@ export function renderHTML(blocks, meta = {}) {
   let body = "";
 
   for (const blk of blocks) {
+    // 跳过空块（翻译失败/空结果兜底后不应产生空段落）
+    if (!blk || !blk.text || !blk.text.trim()) continue;
     switch (blk.type) {
       case "H1":
         body += `<h1>${escapeHtml(blk.text)}</h1>\n`;
