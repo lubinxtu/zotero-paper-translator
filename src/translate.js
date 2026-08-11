@@ -70,41 +70,134 @@ function sleep(ms) {
 }
 
 // 逐块翻译。blocks: [{type,text}]；返回同结构，text 为译文。
-// 并发数为 3：长 PDF 提速明显，同时避免一次性打爆 API 限流；输出保持原顺序。
+//
+// 策略：
+// 1. 连续可翻译块打包成批（[B0]/[B1]… 标记一次调用），让模型看到上下文，
+//    显著减少碎片幻觉（此前每块独立翻译，残片输入会诱发模型编造内容）。
+// 2. 参考文献条目（[N] 开头）与公式/符号残片不送 LLM，直接保留原文
+//    （参考文献本就要求英文原文；残片送模型只会换来幻觉或"无法理解"的废话）。
+// 3. 批量失败或输出格式不匹配时，自动回退为逐块翻译。
 // onProgress(done,total,type)
-const MAX_CONCURRENCY = 3;
+const MAX_BATCH = 4;         // 每批最多块数
+const MAX_CONCURRENCY = 2;   // 批间并发
+
+// 参考文献条目（[N] 开头）→ 保留英文原文，不送 LLM
+function isReference(text) {
+  return /^\[\d+\]/.test(text.trim());
+}
+
+// 公式/符号残片 → 保留原文不翻译（公式本来就不该翻译，且残片会诱发模型幻觉）
+function isFragment(text) {
+  const t = text.trim();
+  if (!t) return true;
+  const words = (t.match(/[A-Za-z]{3,}/g) || []).length;
+  if (words >= 6) return false; // 含完整句子 → 交给模型
+  const symCount = (t.match(/[\^_$\\{}|±≈×÷−√∫∂∑∏∈ΩλΣΓΔγμνπθℓ⟨⟩†∗]/g) || []).length;
+  if (symCount >= 3) return true;
+  if (t.length >= 12 && !/\s/.test(t)) return true; // 无空格连续符号串
+  return false;
+}
 
 export async function translateBlocks(blocks, opts, onProgress) {
   const system = buildSystemPrompt(opts.customGlossary || "");
   const total = blocks.length;
   const out = new Array(total);
   let done = 0;
-  let idx = 0;
 
-  const worker = async () => {
-    while (idx < total) {
-      const i = idx++;
-      const blk = blocks[i];
-      if (!TRANSLATABLE.has(blk.type)) {
-        out[i] = blk;
-      } else {
-        const userContent = `${blockMarker(blk.type)} ${blk.text}`;
-        try {
-          const translated = await callLLM(system, userContent, opts);
-          out[i] = { type: blk.type, text: stripMarker(translated, blk.type) };
-        } catch (e) {
-          // 翻译失败时保留原文，避免整篇失败
-          out[i] = { type: blk.type, text: blk.text };
-          out._errors = (out._errors || []).concat([`[${blk.type}] ${e.message}`]);
-        }
-      }
-      done++;
-      if (onProgress) onProgress(done, total, blk.type);
+  // 构造批：连续可翻译块打包；不可翻译/参考文献/残片直接保留
+  const batches = [];
+  let curBatch = [];
+  const flush = () => {
+    if (curBatch.length) {
+      batches.push(curBatch);
+      curBatch = [];
     }
   };
+  for (let i = 0; i < total; i++) {
+    const blk = blocks[i];
+    if (!TRANSLATABLE.has(blk.type) || isReference(blk.text) || isFragment(blk.text)) {
+      out[i] = blk;
+      done++;
+      if (onProgress) onProgress(done, total, blk.type);
+      flush();
+      continue;
+    }
+    if (curBatch.length >= MAX_BATCH) flush();
+    curBatch.push({ pos: i, blk });
+  }
+  flush();
 
-  await Promise.all(Array.from({ length: MAX_CONCURRENCY }, () => worker()));
+  let batchIdx = 0;
+  const worker = async () => {
+    while (batchIdx < batches.length) {
+      const batch = batches[batchIdx++];
+      const results = await translateBatch(system, batch, opts);
+      for (const r of results) {
+        const item = batch[r.idx];
+        const blk = item.blk;
+        if (r.ok) {
+          out[item.pos] = { type: blk.type, text: stripMarker(r.text, blk.type) };
+        } else {
+          out[item.pos] = { type: blk.type, text: blk.text };
+          out._errors = (out._errors || []).concat([`[${blk.type}] ${r.error}`]);
+        }
+        done++;
+        if (onProgress) onProgress(done, total, blk.type);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, batches.length) }, () => worker()));
   return out;
+}
+
+// 翻译一批块；批量失败或输出无法解析时回退为逐块翻译
+async function translateBatch(system, batch, opts) {
+  const userContent = batch
+    .map((b, i) => `[B${i}] ${blockMarker(b.blk.type)} ${b.blk.text}`)
+    .join("\n");
+  let translated;
+  try {
+    translated = await callLLM(system, userContent, opts);
+  } catch (e) {
+    return fallbackOneByOne(system, batch, opts);
+  }
+  const parsed = parseBatchOutput(translated, batch.length);
+  if (!parsed) {
+    return fallbackOneByOne(system, batch, opts);
+  }
+  return batch.map((b, i) => ({ idx: i, pos: b.pos, ok: true, text: parsed[i] }));
+}
+
+async function fallbackOneByOne(system, batch, opts) {
+  return Promise.all(
+    batch.map(async (b) => {
+      try {
+        return {
+          idx: b.idx,
+          pos: b.pos,
+          ok: true,
+          text: await callLLM(system, `${blockMarker(b.blk.type)} ${b.blk.text}`, opts),
+        };
+      } catch (e) {
+        return { idx: b.idx, pos: b.pos, ok: false, error: e.message };
+      }
+    })
+  );
+}
+
+// 解析 [B0] [B1] … 前缀的批输出；任一块缺失则返回 null
+function parseBatchOutput(text, n) {
+  const re = /\[B(\d+)\]\s*([\s\S]*?)(?=\[B\d+\]\s*|$)/g;
+  const results = new Array(n);
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const idx = Number(m[1]);
+    if (idx >= 0 && idx < n) results[idx] = m[2].trim();
+  }
+  for (let i = 0; i < n; i++) {
+    if (results[i] === undefined) return null;
+  }
+  return results;
 }
 
 function stripMarker(text, type) {
