@@ -57,16 +57,16 @@ function classify(line) {
   return "P";
 }
 
-// ====== 双栏检测：对页面所有 text item 的 x 坐标做 k-means(k=2) ======
-// 必须在"行聚合"之前基于 item 判断 —— 若先聚合行，同一 y 的左右栏 item 已混成一行，聚类失效。
-function detectTwoColumns(items) {
-  if (items.length < 20) return null;
-  const xs = items.map((it) => it.transform[4]);
+// ====== 双栏检测（行级）======
+// 先按 y 聚合出"原始行"（记录行内 minX/maxX），再用行起点 x 做 k-means(k=2)。
+// 行级而非 item 级：pdfjs 的 item.width 是单个词宽度，无法判断整行是否跨栏；
+// 行级 maxX-minX 才是真正的行宽（页眉/单栏摘要/标题等跨栏行宽度接近页宽）。
+// 两轮聚类：先粗分，过滤跨栏宽行后精调分栏线，避免跨栏行拉偏 splitX。
+function kmeans2(xs) {
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const span = maxX - minX;
   if (span < 10) return null;
-
   let c1 = minX + span * 0.3;
   let c2 = minX + span * 0.7;
   let prev1 = -1;
@@ -90,70 +90,167 @@ function detectTwoColumns(items) {
     prev1 = c1; prev2 = c2;
     c1 = nc1; c2 = nc2;
   }
-  const gap = Math.abs(c1 - c2);
-  const splitX = (c1 + c2) / 2;
-  const leftCount = xs.filter((x) => x <= splitX).length;
-  const rightCount = xs.length - leftCount;
-  // 两簇相距足够远（> 1/4 页宽）且两边都有内容才算双栏
-  if (gap < span * 0.25 || leftCount < 5 || rightCount < 5) return null;
-  return { splitX };
+  return { c1, c2, span };
 }
 
-// 单栏行构建：按 y 聚合 → 行内按 x 拼接 → 返回 [{y, x, text}]
-function buildColumnLines(items) {
+function detectTwoColumns(rows) {
+  if (rows.length < 8) return null;
+  const xs = rows.map((r) => r.minX);
+  let r = kmeans2(xs);
+  if (!r) return null;
+  let { c1, c2, span } = r;
+  let splitX = (c1 + c2) / 2;
+
+  // 第二轮：过滤跨栏宽行（行宽 ≥ 页宽 30% 且横跨中线）后精调分栏线
+  const filtered = rows.filter(
+    (r) => !(r.minX < splitX && r.maxX > splitX && r.maxX - r.minX > span * 0.3)
+  );
+  if (filtered.length >= 6) {
+    const r2 = kmeans2(filtered.map((r) => r.minX));
+    if (r2) {
+      c1 = r2.c1;
+      c2 = r2.c2;
+      span = r2.span;
+      splitX = (c1 + c2) / 2;
+    } else {
+        }
+  }
+
+  const gap = Math.abs(c1 - c2);
+  const leftCount = xs.filter((x) => x <= splitX).length;
+  const rightCount = xs.length - leftCount;
+  if (gap < span * 0.25) return null;
+  if (leftCount >= 3 && rightCount >= 3) return { splitX, span };
+  // 某一栏内容很少（混合布局页）时，用强信号确认：同一 y 高度存在 x 差距大的行
+  if (hasSameRowColumns(rows, splitX, span)) return { splitX, span };
+  return null;
+}
+
+// 强信号：同一 y（±2 容差）存在横跨 splitX 两侧、x 极差大的行 → 双栏
+function hasSameRowColumns(rows, splitX, span) {
+  const byY = new Map();
+  for (const r of rows) {
+    const key = Math.round(r.y / 4);
+    if (!byY.has(key)) byY.set(key, []);
+    byY.get(key).push(r);
+  }
+  let hits = 0;
+  for (const group of byY.values()) {
+    if (group.length < 2) continue;
+    const minX = Math.min(...group.map((r) => r.minX));
+    const maxX = Math.max(...group.map((r) => r.maxX));
+    if (maxX - minX > span * 0.3 && minX < splitX && maxX > splitX) hits++;
+  }
+  return hits >= 2;
+}
+
+// 按 y 聚合原始行；同一 y 组内 x 跨度大（左右栏同行）时按最大间隙拆分成两个子行。
+// 跨栏行（标题/摘要/页眉）item 连续、无大间隙，不会被误拆。
+function buildRawLines(items) {
   const sorted = items.slice().sort((a, b) => {
     const d = b.transform[5] - a.transform[5];
     if (Math.abs(d) > 2) return d;
     return a.transform[4] - b.transform[4];
   });
-  const lines = [];
+  const groups = [];
   let cur = null;
   let lastY = null;
   for (const it of sorted) {
     const y = it.transform[5];
     if (lastY === null || Math.abs(y - lastY) > 2) {
-      cur = { y, x: it.transform[4], items: [] };
-      lines.push(cur);
+      cur = { y, items: [] };
+      groups.push(cur);
       lastY = y;
     }
     cur.items.push(it);
   }
-  return lines
-    .map((line) => {
-      const its = line.items.slice().sort((a, b) => a.transform[4] - b.transform[4]);
-      let s = "";
-      let prevX = null;
-      for (const t of its) {
-        const x = t.transform[4];
-        if (prevX !== null && x - prevX > 2 && s && !s.endsWith(" ")) s += " ";
-        s += t.str;
-        prevX = x + (t.width || 0);
+  const allXs = items.map((it) => it.transform[4]);
+  const span = Math.max(...allXs) - Math.min(...allXs);
+
+  const rows = [];
+  for (const g of groups) {
+    const its = g.items.slice().sort((a, b) => a.transform[4] - b.transform[4]);
+    const first = its[0].transform[4];
+    const last = its[its.length - 1].transform[4] + (its[its.length - 1].width || 0);
+    const rowSpan = last - first;
+    // [N] 编号强信号：同一 y 组内出现两个不同编号 → 参考文献双栏，在第二个编号处拆
+    const numIdxs = [];
+    its.forEach((it, idx) => {
+      if (/^\[\d+\]/.test(it.str.trim())) numIdxs.push(idx);
+    });
+    if (numIdxs.length >= 2) {
+      rows.push(makeRow(g.y, its.slice(0, numIdxs[1])));
+      rows.push(makeRow(g.y, its.slice(numIdxs[1])));
+      continue;
+    }
+    // 组内跨度大且存在明显间隙 → 拆成左右两行
+    if (its.length >= 4 && rowSpan > span * 0.35) {
+      let maxGap = 0;
+      let splitAt = -1;
+      for (let i = 1; i < its.length; i++) {
+        const gap =
+          its[i].transform[4] - (its[i - 1].transform[4] + (its[i - 1].width || 0));
+        if (gap > maxGap) {
+          maxGap = gap;
+          splitAt = i;
+        }
       }
-      return { y: line.y, x: line.x, text: s.replace(/\s+/g, " ").trim() };
-    })
-    .filter((l) => l.text.length > 0);
+      // 两栏行常有 x 重叠（左栏长行延伸到右栏起点附近），用绝对间隙阈值更稳
+      if (maxGap > 40) {
+        rows.push(makeRow(g.y, its.slice(0, splitAt)));
+        rows.push(makeRow(g.y, its.slice(splitAt)));
+        continue;
+      }
+    }
+    rows.push(makeRow(g.y, its));
+  }
+  return rows;
+}
+
+function makeRow(y, items) {
+  const minX = items[0].transform[4];
+  let maxX = minX;
+  for (const it of items) {
+    const x2 = it.transform[4] + (it.width || 0);
+    if (x2 > maxX) maxX = x2;
+  }
+  return { y, minX, maxX, items };
+}
+
+// 行内按 x 拼接文本 → [{y, x, text}]
+function joinRow(row) {
+  const its = row.items.slice().sort((a, b) => a.transform[4] - b.transform[4]);
+  let s = "";
+  let prevX = null;
+  for (const t of its) {
+    const x = t.transform[4];
+    if (prevX !== null && x - prevX > 2 && s && !s.endsWith(" ")) s += " ";
+    s += t.str;
+    prevX = x + (t.width || 0);
+  }
+  return { y: row.y, x: row.minX, text: s.replace(/\s+/g, " ").trim() };
 }
 
 // 分栏组装：双栏页面按「左栏（含跨栏的页眉/页脚/宽标题，按 y 插入）→ 右栏」输出
 function groupIntoLines(items) {
-  const twoCol = detectTwoColumns(items);
+  const rows = buildRawLines(items);
+  const twoCol = detectTwoColumns(rows);
   if (!twoCol) {
-    return buildColumnLines(items);
+    return rows.map(joinRow).filter((l) => l.text.length > 0);
   }
   const splitX = twoCol.splitX;
-  const cross = items.filter(
-    (it) => it.transform[4] <= splitX && it.transform[4] + (it.width || 0) > splitX
-  );
-  const left = items.filter(
-    (it) => it.transform[4] <= splitX && it.transform[4] + (it.width || 0) <= splitX
-  );
-  const right = items.filter((it) => it.transform[4] > splitX);
-  const leftLines = buildColumnLines(left);
-  const crossLines = buildColumnLines(cross);
-  const rightLines = buildColumnLines(right);
+  const span = twoCol.span;
+  const isCross = (r) =>
+    r.minX <= splitX && r.maxX > splitX && r.maxX - r.minX > span * 0.3;
+  const cross = rows.filter(isCross);
+  const left = rows.filter((r) => r.minX <= splitX && !isCross(r));
+  const right = rows.filter((r) => r.minX > splitX);
+  const leftLines = left.map(joinRow);
+  const crossLines = cross.map(joinRow);
+  const rightLines = right.map(joinRow);
   // 跨栏行（页眉/页脚/跨栏标题）按 y 与左栏行混合排序：页眉在页首、页脚在页尾
   const leftMerged = [...leftLines, ...crossLines].sort((a, b) => b.y - a.y);
-  return [...leftMerged, ...rightLines];
+  return [...leftMerged, ...rightLines].filter((l) => l.text.length > 0);
 }
 
 // ====== 段落合并：按行距与行尾标点把正文行合并为段落 ======
@@ -170,6 +267,7 @@ function mergeParagraphs(lines) {
   const paras = [];
   let cur = null;
   let refMode = false; // 参考文献条目内：忽略行尾标点不断段
+  let lastLine = null; // 上一个处理过的行（跳过页眉/页码行后仍保持正确）
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const t = line.text;
@@ -207,14 +305,21 @@ function mergeParagraphs(lines) {
       } else {
         paras.push({ type: cls, text: t });
       }
+      lastLine = line;
       continue;
     }
-    const prev = i > 0 ? lines[i - 1] : null;
-    // y 上升 = 从页底换到页顶（换栏/翻页），必须断段；
-    // 行距明显大于正常行距也是新段
+    const prev = lastLine;
+    // 断段条件：
+    // 1. y 上升 = 从页底换到页顶（换栏/翻页）
+    // 2. 行距明显大于正常行距（段间距）
+    // 3. 行首缩进（x 明显大于上一行，英文论文段首行通常缩进）
+    // 4. 列表项开头（•、–、-）
+    // 注意：行尾标点【不再】作为断段依据 —— 英文排版每行常在句号处结束，
+    //       用它断段会把同一自然段拆成多个碎片（用户反馈"段落不分明"的根因）。
     const columnBreak = prev !== null && prev.y - line.y < 0;
     const gapLarge = prev !== null && lineGap > 0 && prev.y - line.y > lineGap * 1.6;
-    const isParaEnd = /[.!?;:，。；：？！”’"]$/.test(t);
+    const indented = prev !== null && line.x - prev.x > 8;
+    const listStart = /^[•–\-–]\s/.test(t) || /^-\s/.test(t);
     const hyphenBreak = /-\s*$/.test(t);
     const isRefStart = /^\[\d+\]/.test(t);
 
@@ -225,29 +330,18 @@ function mergeParagraphs(lines) {
       refMode = true;
     } else if (!cur) {
       cur = { type: "P", text: t };
-      if (isParaEnd && !refMode) {
-        paras.push(cur);
-        cur = null;
-      }
-    } else if (columnBreak || gapLarge) {
-      // 换栏/翻页或行距大 → 新段
+    } else if (columnBreak || gapLarge || indented || listStart) {
+      // 新段
       paras.push(cur);
       cur = { type: "P", text: t };
       refMode = false;
-      if (isParaEnd && !refMode) {
-        paras.push(cur);
-        cur = null;
-      }
     } else if (hyphenBreak) {
       // 连字符断词：去连字符直接拼接（truncation ar- + gument → argument）
       cur.text = cur.text.replace(/-\s*$/, "") + t;
     } else {
       cur.text += (cur.text.endsWith(" ") || t.startsWith(" ") ? "" : " ") + t;
-      if (isParaEnd && !refMode) {
-        paras.push(cur);
-        cur = null;
-      }
     }
+    lastLine = line;
   }
   if (cur) paras.push(cur);
   return paras;
