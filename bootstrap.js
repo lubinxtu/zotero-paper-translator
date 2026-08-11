@@ -1,13 +1,15 @@
 // bootstrap.js
-// Zotero 7/9 引导入口。负责注册菜单、偏好面板、动态加载 ESM 索引。
+// Zotero 7/9 引导入口。负责注册菜单、偏好面板、加载主模块。
 //
-// v0.1.9 修复（在 Zotero 9.0.6 上核对官方源码后重写）：
-//   1. MenuManager 正确签名：registerMenu({ menuID, pluginID, target, menus:[MenuData] })
-//      —— menuType / l10nID / onCommand 必须放在 menus 数组元素上，且 menus 为必填。
-//      旧写法把这些放顶层会导致校验失败并静默返回 false（不抛异常），菜单不显示。
-//   2. 检查 registerMenu 返回值，失败时真正回退到 Legacy DOM（Zotero 7）。
-//   3. FTL 注入所有主窗口（含以后新开的窗口）；MenuManager 本身不加载插件 FTL。
-//   4. shutdown 时清理 FTL link，避免禁用/更新后残留失效的本地化引用。
+// 关键兼容性结论（在 Zotero 9.0.6 上实测/核对官方源码）：
+// 1. 插件 bootstrap 运行在无 DOM 的 Cu.Sandbox 里，**动态 import() 不可用**
+//    （抛 "No ScriptLoader found for the current context"），
+//    必须用 Services.scriptloader.loadSubScript(rootURI + "index.js", ctx) 加载主模块。
+// 2. MenuManager 正确签名：registerMenu({ menuID, pluginID, target, menus:[MenuData] })
+//    —— menuType / l10nID / onCommand 放在 menus 数组元素上，menus 必填；
+//    注册失败时 registerMenu 静默返回 false（不抛异常），必须检查返回值。
+// 3. FTL 注入所有主窗口（含以后新开的窗口）；MenuManager 本身不加载插件 FTL。
+// 4. shutdown 时清理 FTL link，避免禁用/更新后残留失效的本地化引用。
 
 var rootURI = "";
 var _windowListener = null;
@@ -31,28 +33,33 @@ function startup({ id, version, rootURI: uri }) {
     Zotero.debug("paper-translator: 偏好面板注册异常 - " + e);
   }
 
-  // ====== 2. 动态加载 ESM 索引 ======
-  import(rootURI + "index.js")
-    .then((mod) => {
-      Zotero.PaperTranslator = {
-        translateSelected: mod.translateSelected,
-        showPrefs: mod.showPrefs,
-      };
-      installMenus();
-      Zotero.debug("paper-translator: 模块加载成功，开始安装菜单");
-    })
-    .catch((e) => {
-      Zotero.logError("paper-translator 加载失败: " + e);
-      // 可见告警：避免加载失败时静默无菜单，用户无从排查
-      try {
-        Zotero.alert(
-          null,
-          "论文翻译插件加载失败",
-          "核心模块加载出错，菜单未安装：\n\n" + e.message +
-            "\n\n请按 Ctrl+Shift+J 打开错误控制台，把包含 paper-translator 的日志发给我们排查。"
-        );
-      } catch (alertErr) {}
-    });
+  // ====== 2. 加载主模块（IIFE bundle）======
+  try {
+    const ctx = { rootURI };
+    ctx._globalThis = ctx;
+    Services.scriptloader.loadSubScript(rootURI + "index.js", ctx);
+    const mod = ctx.ZPT;
+    if (!mod || typeof mod.translateSelected !== "function") {
+      throw new Error("主模块导出缺失（ctx.ZPT）");
+    }
+    Zotero.PaperTranslator = {
+      translateSelected: mod.translateSelected,
+      showPrefs: mod.showPrefs,
+    };
+    installMenus();
+    Zotero.debug("paper-translator: 模块加载成功，开始安装菜单");
+  } catch (e) {
+    Zotero.logError("paper-translator 加载失败: " + e);
+    // 可见告警：避免加载失败时静默无菜单，用户无从排查
+    try {
+      Zotero.alert(
+        null,
+        "论文翻译插件加载失败",
+        "核心模块加载出错，菜单未安装：\n\n" + e.message +
+          "\n\n请按 Ctrl+Shift+J 打开错误控制台，把包含 paper-translator 的日志发给我们排查。"
+      );
+    } catch (alertErr) {}
+  }
 }
 
 function shutdown({ id }) {

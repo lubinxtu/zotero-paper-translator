@@ -12,5 +12,8 @@
     "archiver": "^7.0.1",
     "esbuild": "^0.24.0",
     "pdfjs-dist": "^6.2.108"
+  },
+  "dependencies": {
+    "web-streams-polyfill": "^4.3.0"
   }
 }

@@ -2,22 +2,26 @@
 // 使用 pdfjs-dist 从 PDF 抽取文本，并按行重建、识别结构块。
 // 结构块类型见 glossary.js 的 BLOCK。
 //
-// worker 说明（Zotero 沙箱兼容）：
-// Zotero 给插件 bootstrap 的是无 DOM 的 Cu.Sandbox（无 window/document），
-// pdfjs 的真实 worker 路径会因引用 window.location 而失败并自动回退到 fake worker，
-// fake worker 用 `import(workerSrc)` 在主线程加载 worker 模块（沙箱内可用）。
-// 因此这里把 pdf.worker.min.mjs 作为独立文件打进 xpi，用 import.meta.url 定位，
-// 与 bundle 自身的 jar:file 动态导入机制一致。
+// Zotero 沙箱兼容（关键）：
+// - 插件 bootstrap 跑在无 DOM 的 Cu.Sandbox（无 window/document），且**不支持动态
+//   import()**（会抛 "No ScriptLoader found for the current context"）。
+// - 因此 pdf.js worker 通过静态 import 打进同一个 bundle；再走 pdfjs 官方主线程钩子
+//   globalThis.pdfjsWorker（见 pdf.mjs 的 #mainThreadWorkerMessageHandler），
+//   让 pdfjs 直接使用已加载的 WorkerMessageHandler，完全不做 new Worker / import(workerSrc)。
 
 import * as pdfjsLib from "pdfjs-dist";
+import * as pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs";
+// 沙箱缺失的 Web API（ReadableStream 等），必须先于 pdfjs 使用
+import "./polyfills.js";
 
 let _workerReady = false;
 function ensureWorker() {
   if (_workerReady) return;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    "pdf.worker.min.mjs",
-    import.meta.url
-  ).href;
+  try {
+    globalThis.pdfjsWorker = pdfWorker;
+  } catch (e) {}
+  // workerSrc 实际不会被加载（fake worker 直接用上面的钩子），仅满足 pdfjs 的 getter 校验
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
   _workerReady = true;
 }
 
