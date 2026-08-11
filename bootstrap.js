@@ -27,6 +27,8 @@ function startup({ id, version, rootURI: uri }) {
         pluginID: PLUGIN_ID,
         src: "preferences.xhtml",
         label: "论文翻译",
+        // 固定 id：菜单「设置 API Key」用它直接打开该面板
+        id: "zpt-prefpane",
       });
     }
   } catch (e) {
@@ -133,7 +135,12 @@ function installMenus() {
             menuType: "menuitem",
             l10nID: "zpt-menu-prefs",
             onCommand: () => {
-              try { if (Zotero.PaperTranslator && Zotero.PaperTranslator.showPrefs) Zotero.PaperTranslator.showPrefs(); } catch (e) {}
+              try {
+                if (Zotero.PaperTranslator && Zotero.PaperTranslator.showPrefs) Zotero.PaperTranslator.showPrefs();
+                else Zotero.alert(null, "论文翻译", "插件尚未加载完成，请稍后重试。");
+              } catch (e) {
+                Zotero.logError("paper-translator: 打开设置失败 - " + e);
+              }
             },
           },
         ],
@@ -185,8 +192,10 @@ function installMenus() {
       mi.id = "zpt-menu-prefs";
       mi.label = "论文翻译：设置 API Key";
       mi.addEventListener("command", () => {
-        try { if (Zotero.PaperTranslator && Zotero.PaperTranslator.showPrefs) Zotero.PaperTranslator.showPrefs(); }
-        catch (e) { Zotero.logError(e); }
+        try {
+          if (Zotero.PaperTranslator && Zotero.PaperTranslator.showPrefs) Zotero.PaperTranslator.showPrefs();
+          else Zotero.alert(null, "论文翻译", "插件尚未加载完成，请稍后重试。");
+        } catch (e) { Zotero.logError("paper-translator: 打开设置失败 - " + e); }
       });
       toolsPopup.appendChild(mi);
       Zotero.debug("paper-translator: 工具菜单(设置)已添加");

@@ -5,7 +5,7 @@
 import { extractPDF } from "./extract.js";
 import { translateBlocks } from "./translate.js";
 import { renderHTML } from "./render.js";
-import { loadPrefs, savePrefs, BRANCH, DEFAULTS } from "./prefs.js";
+import { loadPrefs } from "./prefs.js";
 import { createProgress, alert } from "./ui.js";
 
 // 取当前选中的 PDF 目标：返回 [{pdfItem, parentItem}]
@@ -131,13 +131,9 @@ async function run(pdfItem, parentItem, prefs, progress) {
 export async function translateSelected() {
   const prefs = loadPrefs();
   if (!prefs.apiKey) {
-    // 尝试打开偏好面板，或弹窗配置
-    const shouldConfig = confirm(
-      "论文翻译 - 未配置 API Key\n\n你需要先配置 LLM API 才能使用翻译功能。\n\n点击「确定」打开配置窗口，\n点击「取消」退出。"
-    );
-    if (shouldConfig) {
-      await showPrefs();
-    }
+    // Zotero 沙箱里没有 window.prompt/confirm，统一引导到偏好面板填写
+    alert("未配置 API Key", "请先在「Zotero 设置 → 论文翻译」中填写 LLM API Key / 端点 / 模型，再执行翻译。");
+    showPrefs();
     return;
   }
   const targets = getPDFTargets();
@@ -161,37 +157,22 @@ export async function translateSelected() {
   }
 }
 
-// ====== 备用配置弹窗（当偏好面板不可用时使用）======
+// ====== 打开设置：直接打开已注册的偏好面板（Zotero 沙箱无 window.prompt，不能再用弹窗配置）======
 export async function showPrefs() {
-  const prefs = loadPrefs();
-
-  // 弹窗输入 API Key
-  const apiKey = prompt(
-    "论文翻译 - API Key 配置\n\n请输入你的 LLM API Key（OpenAI / DeepSeek / 兼容接口）：",
-    prefs.apiKey
-  );
-  if (apiKey === null) return; // 用户取消
-  prefs.apiKey = apiKey;
-
-  // 弹窗输入 Base URL
-  const urlHint = "推荐：\n• OpenAI: https://api.openai.com/v1\n• DeepSeek: https://api.deepseek.com\n• 其他兼容接口地址";
-  const baseURL = prompt(
-    `论文翻译 - API 端点\n\n${urlHint}\n\n请输入 Base URL：`,
-    prefs.baseURL || DEFAULTS.baseURL
-  );
-  if (baseURL === null) return;
-  prefs.baseURL = baseURL || DEFAULTS.baseURL;
-
-  // 弹窗输入模型名
-  const model = prompt(
-    "论文翻译 - 模型选择\n\n推荐：gpt-4o-mini / deepseek-chat / gpt-4o\n\n请输入模型名称：",
-    prefs.model || DEFAULTS.model
-  );
-  if (model === null) return;
-  prefs.model = model || DEFAULTS.model;
-
-  savePrefs(prefs);
-  alert("保存成功", "API 配置已保存！现在可以选中文献进行翻译了。\n\n工具 → 论文翻译：翻译选中 PDF");
+  try {
+    if (
+      Zotero.Utilities &&
+      Zotero.Utilities.Internal &&
+      Zotero.Utilities.Internal.openPreferences
+    ) {
+      Zotero.Utilities.Internal.openPreferences("zpt-prefpane");
+      return;
+    }
+  } catch (e) {
+    Zotero.logError("paper-translator: 打开偏好面板失败 - " + e);
+  }
+  // 兜底提示
+  alert("打开设置", "请在 Zotero 菜单：编辑 → 设置 → 论文翻译 中填写 API Key / 端点 / 模型。");
 }
 
 export { getPDFTargets };

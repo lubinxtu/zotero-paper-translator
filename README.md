@@ -86,7 +86,8 @@ index.js     ── 写入临时文件，作为 Zotero 子附件导入（Zotero.
 
 ## 更新日志
 
-- **v0.1.11**：修复插件核心模块在 Zotero 9 中加载失败的根因 —— 插件 bootstrap 运行在无 DOM 的 `Cu.Sandbox` 里，**动态 `import()` 不可用**（抛 `No ScriptLoader found for the current context`）。改为：主模块打成 IIFE 由 `Services.scriptloader.loadSubScript` 加载（Zotero 官方示例同款模式）；pdf.js worker 静态打包进同一 bundle，并通过 pdfjs 官方主线程钩子 `globalThis.pdfjsWorker` 直连（不再做任何运行时模块加载）；沙箱缺失的 `DOMMatrix` / `performance` / `Uint8Array.toHex` / `Promise.withResolvers` / `AbortController` 由构建时打桩补齐；加载失败会弹窗提示。
+- **v0.1.12**：修复「设置 API Key」点击无反应 —— Zotero 沙箱没有 `window.prompt/confirm`，旧 `showPrefs()` 一调用就抛错被静默吞掉。现在「设置 API Key」直接打开已注册的偏好面板（`Zotero.Utilities.Internal.openPreferences("zpt-prefpane")`），未配置 API Key 时也引导到面板填写；错误不再静默（记入日志）。
+- **v0.1.11**：修复插件核心模块在 Zotero 9 中加载失败的根因 —— 插件 bootstrap 运行在无 DOM 的 `Cu.Sandbox` 里，**动态 `import()` 不可用**（抛 `No ScriptLoader found for the current context`）。改为：主模块打成 IIFE 由 `Services.scriptloader.loadSubScript` 加载（Zotero 官方示例同款模式）；pdf.js worker 静态打包进同一 bundle，并通过 pdfjs 官方主线程钩子 `globalThis.pdfjsWorker` 直连（不再做任何运行时模块加载）；沙箱缺失的 `DOMMatrix` / `performance` / `AbortSignal` / `AbortController` / `ReadableStream` / `Uint8Array.toHex` / `Promise.withResolvers` 由构建时补齐；加载失败会弹窗提示。
 - **v0.1.10**：修复 pdfjs v6 顶层 `new DOMMatrix()` 在沙箱中崩溃的问题（该版本被 v0.1.11 的更完整方案取代）。
 - **v0.1.9**：修复 Zotero 8/9 菜单不显示 —— 按官方源码核对并修正 `MenuManager.registerMenu` 签名（`menus` 数组必填）、检查注册返回值并真正回退；FTL 改为标准多行 `.label` 属性；`build.mjs` 把 `locale/` 打入 xpi；FTL 注入所有主窗口并支持新开窗口。
 - **v0.1.8**：重写菜单系统（MenuManager + `#menu_ToolsPopup` fallback），新增"设置 API Key"入口。
