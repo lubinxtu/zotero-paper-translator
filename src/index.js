@@ -99,7 +99,11 @@ async function run(pdfItem, parentItem, prefs, progress) {
     progress.setText(`翻译 ${done}/${total}`);
   });
   if (translated._errors && translated._errors.length) {
-    alert("部分段落翻译失败", `已保留原文。失败 ${translated._errors.length} 段。`);
+    const sample = translated._errors.slice(0, 3).join("\n");
+    alert(
+      "部分段落翻译失败",
+      `已保留原文。失败 ${translated._errors.length} 段。\n\n示例错误：\n${sample}`
+    );
   }
 
   const meta = getItemMeta(parentItem || pdfItem);

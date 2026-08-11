@@ -11,7 +11,9 @@ function blockMarker(type) {
 }
 
 // 单次 LLM 调用，带重试
-async function callLLM(systemPrompt, userContent, opts, attempt = 0) {
+// dropTemperature：推理模型（如 Kimi k2 系列）只允许 temperature=1，
+// 400 报 "invalid temperature" 时自动去掉该参数重试一次
+async function callLLM(systemPrompt, userContent, opts, attempt = 0, dropTemperature = false) {
   const url = (opts.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "") + "/chat/completions";
   const body = {
     model: opts.model || "gpt-4o-mini",
@@ -19,9 +21,11 @@ async function callLLM(systemPrompt, userContent, opts, attempt = 0) {
       { role: "system", content: systemPrompt },
       { role: "user", content: userContent },
     ],
-    temperature: opts.temperature != null ? opts.temperature : 0.2,
     stream: false,
   };
+  if (!dropTemperature && opts.temperature != null) {
+    body.temperature = opts.temperature;
+  }
   let res;
   try {
     res = await fetch(url, {
@@ -35,7 +39,7 @@ async function callLLM(systemPrompt, userContent, opts, attempt = 0) {
   } catch (e) {
     if (attempt < (opts.maxRetries || 3)) {
       await sleep(800 * (attempt + 1));
-      return callLLM(systemPrompt, userContent, opts, attempt + 1);
+      return callLLM(systemPrompt, userContent, opts, attempt + 1, dropTemperature);
     }
     throw new Error("网络请求失败: " + e.message);
   }
@@ -44,12 +48,17 @@ async function callLLM(systemPrompt, userContent, opts, attempt = 0) {
     const retryAfter = Number(res.headers.get("retry-after") || (attempt + 1) * 3);
     if (attempt < (opts.maxRetries || 3)) {
       await sleep(retryAfter * 1000);
-      return callLLM(systemPrompt, userContent, opts, attempt + 1);
+      return callLLM(systemPrompt, userContent, opts, attempt + 1, dropTemperature);
     }
     throw new Error("触发限流且重试耗尽 (429)");
   }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
+    // 推理模型不接受 temperature（如 Kimi k2 系列只允许 1）→ 去掉该参数重试
+    if (!dropTemperature && res.status === 400 && /temperature/i.test(txt)) {
+      Zotero.debug("paper-translator: API 不接受 temperature，降级重试 - " + txt.slice(0, 120));
+      return callLLM(systemPrompt, userContent, opts, attempt, true);
+    }
     throw new Error(`API 错误 ${res.status}: ${txt.slice(0, 200)}`);
   }
   const data = await res.json();
