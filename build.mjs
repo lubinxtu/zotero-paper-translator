@@ -48,6 +48,16 @@ const STUBS = `if (typeof globalThis.DOMMatrix === "undefined") {
 if (typeof globalThis.performance === "undefined") {
   globalThis.performance = { now: () => Date.now() };
 }
+if (typeof globalThis.console === "undefined") {
+  // 沙箱 wantGlobalProperties 不含 console，pdfjs 的 info/warn 会直接崩
+  globalThis.console = {
+    log: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+  };
+}
 if (typeof globalThis.AbortSignal === "undefined") {
   globalThis.AbortSignal = class AbortSignal {
     constructor() { this.aborted = false; this.reason = undefined; }

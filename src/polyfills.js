@@ -12,6 +12,8 @@ import {
   ReadableByteStreamController,
   ReadableStreamDefaultController,
 } from "web-streams-polyfill";
+// Zotero 沙箱没有 structuredClone（pdfjs MessageHandler 的消息序列化路径用到）
+import structuredClonePolyfill from "@ungap/structured-clone";
 
 // pdfjs v6 的 getTextContent 走流式传输（MessageHandler.sendWithStream → new ReadableStream），
 // 沙箱的 wantGlobalProperties 不含 ReadableStream/WritableStream/TransformStream。
@@ -32,4 +34,10 @@ if (typeof globalThis.ReadableByteStreamController === "undefined") {
 }
 if (typeof globalThis.ReadableStreamDefaultController === "undefined") {
   globalThis.ReadableStreamDefaultController = ReadableStreamDefaultController;
+}
+if (typeof globalThis.structuredClone !== "function") {
+  // pdfjs 会以 structuredClone(obj, null) 调用（原生 API 接受 null options），
+  // @ungap/structured-clone 对 null 会解构报错，这里包一层归一化
+  globalThis.structuredClone = (value, options) =>
+    structuredClonePolyfill(value, options == null ? undefined : options);
 }
