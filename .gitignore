@@ -7,3 +7,5 @@ addon/
 
 # 系统
 .DS_Store
+.build-extract-test.mjs
+.test-*.mjs
