@@ -16,6 +16,9 @@ function renderTable(text) {
     l.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
   const headers = parseRow(lines[0]);
   const rows = lines.slice(2).map(parseRow);
+  // 没有任何数据单元格的空表（抽取碎片导致）降级为等宽文本，避免渲染空白表格
+  const hasData = rows.some((r) => r.some((c) => c !== ""));
+  if (!hasData) return `<pre>${escapeHtml(text)}</pre>`;
   let html = '<table class="zt-table"><thead><tr>';
   for (const h of headers) html += `<th>${escapeHtml(h)}</th>`;
   html += "</tr></thead><tbody>";

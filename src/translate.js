@@ -108,7 +108,10 @@ export async function translateBlocks(blocks, opts, onProgress) {
 }
 
 function stripMarker(text, type) {
-  const m = blockMarker(type);
-  // 去掉行首可能的 "[P] " 之类标记
-  return text.replace(new RegExp("^\\s*" + m.replace(/[\[\]]/g, "\\$&") + "\\s*"), "").trim();
+  // 去掉行首可能的结构标记（模型可能改写/添加任意标记，如 [P]、[TABLE]、[H2]）
+  // 以及 markdown 标题符号（## 、### 等）
+  return text
+    .replace(/^\s*\[(?:P|H1|H2|H3|TABLE|FIG|EQN)\]\s*/, "")
+    .replace(/^#{1,6}\s*/, "")
+    .trim();
 }

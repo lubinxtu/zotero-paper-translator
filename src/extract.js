@@ -169,17 +169,44 @@ function mergeParagraphs(lines) {
 
   const paras = [];
   let cur = null;
+  let refMode = false; // 参考文献条目内：忽略行尾标点不断段
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const t = line.text;
+    // 页眉/页脚过滤：arXiv 编号行、纯页码行
+    if (/^arXiv\s*:\s*\d+/i.test(t) || (/^\d{1,3}$/.test(t) && t.length <= 3)) {
+      continue;
+    }
     const cls = classify(t);
     if (cls !== "P") {
-      // 标题 / 图注 / 表格行：独立成块
       if (cur) {
         paras.push(cur);
         cur = null;
       }
-      paras.push({ type: cls, text: t });
+      refMode = false;
+      if (cls === "FIG") {
+        // 图注合并：FIG 行后紧邻的描述行并入（直到大行距/非 P/超过 5 行）
+        let text = t;
+        let j = i + 1;
+        let merged = 0;
+        while (j < lines.length && merged < 5) {
+          const nt = lines[j];
+          const ncls = classify(nt.text);
+          const gapBig =
+            lineGap > 0 && line.y - nt.y > lineGap * 1.6;
+          if (ncls === "P" && !gapBig) {
+            text += " " + nt.text;
+            merged++;
+            j++;
+          } else {
+            break;
+          }
+        }
+        i = j - 1;
+        paras.push({ type: "FIG", text });
+      } else {
+        paras.push({ type: cls, text: t });
+      }
       continue;
     }
     const prev = i > 0 ? lines[i - 1] : null;
@@ -189,11 +216,16 @@ function mergeParagraphs(lines) {
     const gapLarge = prev !== null && lineGap > 0 && prev.y - line.y > lineGap * 1.6;
     const isParaEnd = /[.!?;:，。；：？！”’"]$/.test(t);
     const hyphenBreak = /-\s*$/.test(t);
+    const isRefStart = /^\[\d+\]/.test(t);
 
-    if (!cur) {
+    if (isRefStart) {
+      // 参考文献条目：强制新段并进入 refMode（内部忽略行尾标点，直到下一条 [N] 或大间隔）
+      if (cur) paras.push(cur);
       cur = { type: "P", text: t };
-      // 段首行也检查是否自己就结束了（单行段落）
-      if (isParaEnd) {
+      refMode = true;
+    } else if (!cur) {
+      cur = { type: "P", text: t };
+      if (isParaEnd && !refMode) {
         paras.push(cur);
         cur = null;
       }
@@ -201,7 +233,8 @@ function mergeParagraphs(lines) {
       // 换栏/翻页或行距大 → 新段
       paras.push(cur);
       cur = { type: "P", text: t };
-      if (isParaEnd) {
+      refMode = false;
+      if (isParaEnd && !refMode) {
         paras.push(cur);
         cur = null;
       }
@@ -210,7 +243,7 @@ function mergeParagraphs(lines) {
       cur.text = cur.text.replace(/-\s*$/, "") + t;
     } else {
       cur.text += (cur.text.endsWith(" ") || t.startsWith(" ") ? "" : " ") + t;
-      if (isParaEnd) {
+      if (isParaEnd && !refMode) {
         paras.push(cur);
         cur = null;
       }
